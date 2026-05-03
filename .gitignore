@@ -1,5 +1,5 @@
-*.mp4
+*.pyd
+*.dllgit status
 *.pt
+*.mp4
 __pycache__/
-*.pyc
-.vscode/
