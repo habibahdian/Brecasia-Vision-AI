@@ -4,7 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Brecaresia | Smart Rehab</title>
+    
+    <!-- PWA Manifest Link -->
     <link rel="manifest" href="/manifest.json">
+    
+    <!-- PWA Mobile Optimization Meta Tags -->
+    <meta name="theme-color" content="#e91e63">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/logo.png">
+
     <style>
         :root { --pink: #e91e63; --green: #2ecc71; --blue: #0ea5e9; --bg: #f8fafc; }
         body { font-family: 'Inter', system-ui, sans-serif; margin: 0; background: var(--bg); color: #1e293b; }
@@ -33,21 +42,23 @@
 
         /* VIEWPORT */
         .viewport-box { background: #000; border-radius: 35px; height: 55vh; display: flex; align-items: center; justify-content: center; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.15); border: 8px solid white; position: relative; }
-        #display-img { height: 100%; width: 100%; object-fit: contain; }
+        #display-img { height: 100%; width: 100%; object-fit: contain; z-index: 10; position: absolute; background: black; }
+        
+        /* RAW VIDEO (Hidden but active) */
+        #video { width: 100%; height: 100%; object-fit: cover; position: absolute; z-index: 1; }
 
         /* STATS */
         .stats-bar { display: flex; justify-content: space-around; background: white; padding: 25px; border-radius: 24px; margin-top: 25px; border: 1px solid #f1f5f9; }
         .stat-val { font-size: 30px; font-weight: 800; color: var(--green); font-family: monospace; }
         .stat-label { font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 5px; }
 
-        video, canvas, input { display: none; }
+        canvas, input { display: none; }
     </style>
 </head>
 <body>
 
     <div id="landing">
         <div class="hero-card">
-            <!--  LOGO  -->
             <img src="/logo.png" class="logo-img" alt="Logo Brecaresia">
             <h1 style="margin:0; font-size:40px;">Brecaresia</h1>
             <p style="color:var(--pink); font-weight:700; letter-spacing:4px; text-transform:uppercase; margin:10px 0 35px;">AI VisionMotion Rehabilitation</p>
@@ -66,7 +77,6 @@
 
         <div class="container">
             <div class="panel-row">
-                <!-- PANEL: INFERENCE -->
                 <div class="card">
                     <span class="card-title">Medical File Inference</span>
                     <button class="tool" onclick="pickFile()">Chest expansion</button>
@@ -75,14 +85,12 @@
                     <button class="tool" onclick="pickFile()">Upper limb</button>
                     <button class="tool" onclick="pickFile()">Wall walking</button>
                 </div>
-                <!-- PANEL: LIVE -->
                 <div class="card" style="text-align: center;">
                     <span class="card-title">Live AI Session</span>
                     <button class="tool btn-start" onclick="startLive()">START</button>
                     <button class="tool btn-switch" onclick="switchCamera()">SWITCH CAM</button>
                     <button class="tool" style="color: #ef4444;" onclick="location.reload()">STOP</button>
                 </div>
-                <!-- PANEL: DATA ACTIONS -->
                 <div class="card" style="text-align: center;">
                     <span class="card-title">Data Actions</span>
                     <button class="tool btn-run" onclick="alert('Analyzing all files...')">RUN FILES</button>
@@ -91,8 +99,10 @@
             </div>
 
             <div class="viewport-box">
+                <!-- Processed AI frames will be shown here -->
                 <img id="display-img" src="">
-                <video id="video" autoplay playsinline></video>
+                <!-- This raw camera element runs in the background -->
+                <video id="video" autoplay playsinline muted></video>
                 <canvas id="canvas"></canvas>
                 <input type="file" id="file-input" accept="image/*,video/*" onchange="upload()">
             </div>
@@ -104,7 +114,6 @@
                 </div>
                 <div style="text-align: center;">
                     <div class="stat-label">Real-time Area (Pixels²)</div>
-                    
                     <div class="stat-val" id="area-val">0.00</div>
                 </div>
             </div>
@@ -140,22 +149,11 @@
             const formData = new FormData();
             formData.append('file', document.getElementById('file-input').files[0]);
             areaText.innerText = "...";
-            
             try {
                 const res = await fetch('/infer-file', { method: 'POST', body: formData });
                 const data = await res.json();
-               
-                if (data.image) {
-                    display.src = data.image;
-                }
-                
-                
-                if (data.area !== undefined && data.area !== null) {
-                    areaText.innerText = data.area;
-                } else {
-                    areaText.innerText = "0.00";
-                }
-                
+                if (data.image) display.src = data.image;
+                areaText.innerText = data.area !== undefined ? data.area : "0.00";
                 deviceText.innerText = "FILE MODE";
             } catch (error) {
                 console.error("Upload error:", error);
@@ -166,55 +164,93 @@
 
         async function startLive() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: mode, width: { ideal: 640 } } 
-                });
+                const constraints = {
+                    video: { 
+                        facingMode: mode, 
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
+                    audio: false
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
                 
-                const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-                ws = new WebSocket(protocol + window.location.host + '/ws/video');
-                
-                ws.onmessage = (e) => {
-                    try {
-                        const data = JSON.parse(e.data);
-                        
-                        // WebSocket
-                        if (data.annotated_image) {
-                            display.src = data.annotated_image;
-                        }
-                        
-                        // DATA.AREA 
-                        if (data.area !== undefined && data.area !== null) {
-                            areaText.innerText = data.area;
-                        } else {
-                            areaText.innerText = "0.00";
-                        }
-                        
-                        if (data.device) {
-                            deviceText.innerText = data.device;
-                        }
-                    } catch (error) {
-                        console.error("WebSocket message parsing error:", error);
-                    }
+                video.onloadedmetadata = () => {
+                    video.play();
+                    deviceText.innerText = "SESSION INITIALIZING...";
+                    startStreaming();
                 };
-                
-                ws.onerror = (error) => {
-                    console.error("WebSocket error:", error);
-                    deviceText.innerText = "CONNECTION ERROR";
-                };
-                
-                setInterval(() => {
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        canvas.width = 480; 
-                        canvas.height = 360;
-                        ctx.drawImage(video, 0, 0, 480, 360);
-                        ws.send(canvas.toDataURL('image/jpeg', 0.45));
-                    }
-                }, 80);
-            } catch (error) {
-                console.error("Camera access error:", error);
-                alert("Cannot access camera. Please check permissions.");
+
+            } catch (err) {
+                alert("Camera Error: " + err.message);
+                deviceText.innerText = "CAMERA DENIED";
             }
+        }
+
+        function startStreaming() {
+            // Check protocol for secure WebSocket (wss) vs standard (ws)
+            const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+            ws = new WebSocket(protocol + window.location.host + '/ws/video');
+            
+            ws.onopen = () => {
+                deviceText.innerText = "LIVE AI ACTIVE";
+                captureAndSend();
+            };
+
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.annotated_image) {
+                    // Update viewport with processed AI image
+                    display.src = data.annotated_image;
+                }
+                if (data.area !== undefined) {
+                    areaText.innerText = data.area;
+                }
+            };
+
+            ws.onclose = () => {
+                deviceText.innerText = "DISCONNECTED";
+            };
+
+            ws.onerror = (err) => {
+                console.error("WebSocket Error:", err);
+                deviceText.innerText = "CONNECTION ERROR";
+            };
+        }
+
+        function captureAndSend() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                // Resize hidden canvas to manageable processing size
+                canvas.width = 640;
+                canvas.height = 480;
+                
+                // Draw current frame from hidden raw video
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Compress and convert to Base64
+                // 0.5 quality provides a balance between clarity and latency
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.5); 
+                
+                // Send the frame to the Python FastAPI server
+                ws.send(dataUrl);
+                
+                // Loop approximately 10-15 times per second
+                setTimeout(captureAndSend, 70); 
+            }
+        }
+
+        // --- PWA Service Worker Registration ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                .then(registration => {
+                    console.log('ServiceWorker registration successful');
+                })
+                .catch(err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
         }
     </script>
 </body>
