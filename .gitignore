@@ -1,5 +1,4 @@
-*.pyd
-*.dllgit status
+.venv/
+__pycache__/
 *.pt
-*.mp4
-__pycache__
+*.xlsx
